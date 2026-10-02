@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "start": "npm run build && node dist/src/demo.js",
+    "test": "npm run build && node --test dist/tests/*.test.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

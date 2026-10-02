@@ -11,8 +11,9 @@ export class InAppNotificationChannel implements NotificationChannel {
     this.sent.push(notification);
   }
 
+  // Returns a copy, so callers cannot alter the record of what was sent.
   get delivered(): readonly Notification[] {
-    return this.sent;
+    return [...this.sent];
   }
 
   deliveredTo(playerId: PlayerId): readonly Notification[] {

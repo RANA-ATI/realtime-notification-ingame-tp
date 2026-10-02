@@ -152,3 +152,85 @@ Tool: Claude Code (VS Code extension).
 - Added the `start` script to `package.json`. It builds first and then runs the demo, so `npm install` followed directly by `npm start` also works.
 - No existing source file was modified.
 - Verified from a clean state: the files git would commit were copied to an empty folder with no `node_modules` or `dist`, and `npm install`, `npm run build` and `npm start` each exited successfully. The demo printed the brief's exact wording for level up, item acquired and friend request, delivered the friend request to player 1 and the acceptance to player 3, skipped the friend request sent while SOCIAL was off, and delivered nine notifications for ten triggers.
+
+## 12. Handlers or a factory (2026-10-02)
+
+**Goal:** check the per-event handler decision once the code existed, before writing tests against it.
+
+**Prompt (summary):** asked whether a file for each of the seven events is really the way to go, or whether a notification factory would give a better outcome.
+
+**Outcome:**
+- Claude compared the two. A factory would be one map from event type to a function returning a notification request. It is shorter, shows all rules on one screen, and can make a forgotten event a compile error.
+- Kept: the seven handlers. The factory's shape assumes one event produces exactly one notification for one recipient. Notifying all of a player's friends, skipping common items, or notifying both players in a duel are local changes in a handler and would change the factory's return type for every entry.
+- Identified as the real weakness of the handler design: nothing forces an event to have a subscribed handler. This became a test requirement in the next step instead of a design change.
+
+## 13. Tests, adversarial checks and README (2026-10-02)
+
+**Goal:** permanent tests that try to break the implementation, and reviewer-facing documentation.
+
+**Prompt (summary):** implement step 7 only. Add `npm test` using Node's built-in runner. Adversarial tests for the event bus, `NotificationService`, all seven handlers including edge cases, and true end-to-end tests through `createApp()`. Protect against an event being emitted with no registered handler, without making the bus require subscribers. Test the full failure path with a failing channel. Reason about ordering under sequential publishes. Evaluate whether a central factory would materially improve the design, and do not add one just to reduce file count. If a concrete architectural defect is found, stop and report before changing it. Complete the README. A second question asked whether the project needs a CLI or whether the demo is enough, to be answered from the brief and not assumed.
+
+**Outcome:**
+- Created five test files and one compile-time file under `tests/`, and the `test` script. There is no new dependency. 94 tests pass.
+- Missing-registration protection: the end-to-end catalog is typed as one case per `EventType`. Adding an event without a case is a compile error, and a case fails when its handler is not subscribed in `app.ts`. The bus is unchanged and still allows events with no subscribers.
+- Failing channel: the real channel inside `createApp()` is replaced with a throwing `send` through the test runner's `mock.method`, so the test exercises the real wiring. For all seven events the error reaches the caller of the platform method as the same error object.
+- Handlers are tested through a small subclass of `NotificationService` that records requests and forwards nothing, because the handlers depend on the concrete class.
+- Compile-time checks live in `tests/type-safety.ts` as `@ts-expect-error` lines. If one starts compiling, the build fails.
+- Mutation check on a scratch copy: 23 deliberate bugs were introduced one at a time. Examples: each of the seven registrations removed, `NoInfer` removed, the bus or service swallowing errors, the default preference flipped, recipients swapped, wording changed, a handler registered twice. All 23 were caught, 22 by failing tests and one at compile time.
+- Kept: the handler architecture. No failing scenario was found that a factory would fix.
+- Found and reported, not changed: `EventHandler.handle` is declared with method syntax, which TypeScript checks loosely. A handler for one event is therefore accepted where the event type is not a single literal, for example a variable typed as `EventType`. `app.ts` uses literals, so the running system is unaffected. Declaring it as `handle: (event: E) => void` closes the gap; on a scratch copy that one-line change compiled with all 94 tests passing. It touches an approved interface, so it waits for approval.
+- Found and left as documented behavior, since the prompt said not to invent validation: values are used as given (negative or non-finite levels, empty names, self-targeted events), and a handler subscribed during a publish also receives the event being published. Both are listed under intentional limits in the README.
+- CLI question: the brief was re-read. It asks to "demonstrate" example usage that shows "how events are triggered and how the notification system responds", says the triggers can be simulated "in your test code", and requires that the product "compile and run" from the provided build scripts. It does not mention a CLI or interactive input, and it says not to build beyond what is asked. The demo and the tests cover it, so no CLI was added.
+- README written: what the project does, data flow, supported events, preference behavior, why the bus is synchronous and in-process, how to run, design decisions, limits, tests, and how the AI-assisted process worked.
+- Verified from a clean state: the files git would commit were copied to an empty folder, and `npm install`, `npm run build`, `npm test` and `npm start` all succeeded.
+
+## 14. Stricter handler typing (2026-10-02)
+
+**Goal:** close the compile-time gap reported in step 13.
+
+**Prompt (summary):** apply the approved fix only: change `EventHandler.handle` in `src/events/event-bus.ts` from method syntax to function-property syntax, update `tests/type-safety.ts` as needed to pin the stricter behavior, change no architecture or runtime behavior, validate from a clean state, record it here, and do not commit.
+
+**Outcome:**
+- Changed one declaration: `handle(event: E): void` became `handle: (event: E) => void`. TypeScript compares method parameters loosely and function-property parameters strictly, so a handler for one event is no longer accepted where a handler for a wider set of events is required.
+- No handler, the bus implementation, `app.ts` or any other source file needed a change. The handler classes still declare `handle` as an ordinary method, which satisfies the interface. The compiled JavaScript is unaffected, since interfaces produce no output.
+- Added six `@ts-expect-error` lines to `tests/type-safety.ts`: subscribing a single-event handler (as an object and as a class) under a type known only as `EventType`, under a union of two event types, with an explicit union type argument, and assigning a single-event handler or handler class to `EventHandler<DomainEvent>`. Two positive lines confirm a handler of every event is still accepted.
+- Control: with the interface put back to method syntax on a scratch copy, the build failed with six "unused `@ts-expect-error`" errors, one for each new line. So the new lines depend on this fix and would catch it being undone.
+- Verified from a clean state, in a copy of the files git would commit with no `node_modules` or `dist`: `npm install`, `npm run build`, `npm test` and `npm start` each exited 0. The build had no type errors, 94 of 94 tests passed, and the demo delivered the same nine notifications as before.
+
+## 15. Input validation and a full robustness pass (2026-10-02)
+
+**Goal:** stop accepting invalid input and test the whole system thoroughly.
+
+**Prompt (summary):** test the system thoroughly now. No failing tests, no case where negative values or `NaN` are accepted, and a solution that is robust and the best approach to the problem.
+
+**Outcome:**
+- Changed: step 13 had pinned "values are used as given" because that prompt said not to invent validation. This prompt reverses that, so validation was added.
+- Created `src/validation.ts`: a `ValidationError` class and three small assertion helpers. `GameEngine` and `SocialSystem` call them before publishing, so an invalid call throws and no event exists. Handlers and `NotificationService` are unchanged and trust the events they receive.
+- Rules chosen by Claude, since the prompt named only negatives and `NaN`:
+  - Player ids and levels are positive safe integers. This also rejects zero, fractions, `Infinity` and values beyond `Number.MAX_SAFE_INTEGER`, which print in exponent form.
+  - Item ids and challenge names must have at least one non-space character.
+  - The four two-player events need two different players. The brief words each of them as something "another player" does.
+  - `InMemoryUserPreferenceService` rejects an invalid player id when setting or reading a preference.
+- The line drawn: runtime checks cover only what the type system cannot express. An unknown category or a wrong field is already a compile error. A valid id is not checked against known players or items.
+- Two smaller robustness fixes from the step 13 findings:
+  - The bus now iterates over a copy of the handler list, so a handler subscribed during a publish receives the next event and cannot extend the publish in progress.
+  - `InAppNotificationChannel.delivered` now returns a copy, so a caller cannot alter the record of what was sent.
+- Tests: added `tests/validation.test.ts`, which runs every argument of every platform method against a list of 19 invalid numbers or 8 invalid strings, including wrongly typed values a JavaScript caller could pass. Removed the handler tests that pinned level 0, empty challenge names and self-targeted events, since the platform now rejects those. One older ordering test made a player follow themselves and was corrected. 124 tests pass.
+- Mutation check on a scratch copy: 43 deliberate bugs, including 16 that weaken, remove or bypass one validation rule each. 42 were caught. The survivor is removing `NoInfer` from `subscribe`: since the stricter `handle` typing from step 14, a mismatched handler is rejected with or without it, so `NoInfer` now only improves the error message. It was kept and its comment corrected.
+- Randomized model check, run as a throwaway script: 200,000 random calls mixing valid and invalid arguments and preference changes, compared against an independent model. 135,005 invalid calls were all rejected with `ValidationError` and delivered nothing, 10,336 notifications were delivered exactly as the model predicted, 10,291 were suppressed by preference, and there were no unexpected errors, duplicate ids or malformed messages.
+- On "the best approach": for this brief the design held up under every check above, and nothing found argues for a different architecture. What it deliberately does not do is listed under intentional limits in the README.
+- Verified from a clean state: `npm install`, `npm run build`, `npm test` and `npm start` each exited 0.
+
+## 16. Runbook and a game-session demo (2026-10-02)
+
+**Goal:** a document for running and checking the system, and a demo that reads like a game.
+
+**Prompt (summary):** create a runbook for running the test files and checking how the system is working. Elaborate the demo so it mimics a game environment. Can that fit inside this application, or does it need a separate app with a frontend?
+
+**Outcome:**
+- Decided: the demo stays inside this application as a terminal script. A frontend was not built. The brief puts displaying notifications in a game client out of scope, says the client can be mocked, and says not to build beyond what is asked. A frontend would also need a server and a transport between the two, which were ruled out at the start.
+- Rewrote `src/demo.ts` as a scripted game session with three players and five scenes: the lobby (social events), the dungeon (level up, item, challenge, and an item missing from the catalog), the arena (PvP), a settings change (SOCIAL off and on again), and bad data being rejected. Each step prints the story, the exact platform call, and what each player's client received. It ends with every player's inbox. The brief's four example triggers appear with their exact arguments.
+- Added `playerDirectory` to what `createApp()` returns, so the demo prints player names from the same lookup the handlers use instead of keeping its own copy. No other source file changed.
+- Created `docs/RUNBOOK.md`: prerequisites, a three-command health check with expected results, how to read the demo, how to run all tests, one file or tests by name, which test file answers which question, driving the app by hand, checking a fresh clone, and a troubleshooting table. Every command in it was run before it was written down.
+- Updated the README's demo sample and linked the runbook.
+- Verified from a clean state: `npm install`, `npm run build`, `npm test` and `npm start` each exited 0, with 124 of 124 tests passing and the demo delivering 10 notifications.

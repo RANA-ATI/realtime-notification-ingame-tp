@@ -15,7 +15,10 @@ export class InMemoryEventBus implements EventBus {
   }
 
   publish(event: DomainEvent): void {
-    for (const handler of this.handlers.get(event.type) ?? []) {
+    // Iterate over a copy, so a handler that subscribes during this publish
+    // takes effect from the next publish and cannot extend this loop.
+    const subscribed = [...(this.handlers.get(event.type) ?? [])];
+    for (const handler of subscribed) {
       handler.handle(event);
     }
   }

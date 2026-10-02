@@ -11,7 +11,7 @@ npm start       # runs the demo (src/demo.ts) — the example triggers from the 
 npm test        # unit tests
 ```
 
-`npm start` and `npm test` are added when the demo and tests are written. Once a command exists, keep it working. Run `npm run build` (and `npm test` once it exists) before declaring any task done, and report failures clearly.
+Keep all four working. `npm test` and `npm start` build first. Run `npm test` before declaring any task done, and report failures clearly. Tests use Node's built-in runner on the compiled output in `dist/tests/`; `tests/type-safety.ts` holds compile-time checks that fail the build.
 
 ## Architecture
 
@@ -35,7 +35,9 @@ GameEngine / SocialSystem  --publish-->  EventBus  --handle-->  EventHandler (on
 - `src/app.ts` is the composition root and the only place that constructs concrete classes and subscribes handlers. No DI framework.
 - Everything on the path is synchronous and returns `void`: `publish`, `handle`, `notify`, `send`.
 
-Dependency direction: `events/` depends on nothing; `platform/` depends on `events/`; `notifications/` depends on `events/` and `platform/` lookups. Nothing in `events/` or `platform/` imports from `notifications/`.
+- **Input is validated at the platform boundary.** `GameEngine` and `SocialSystem` check arguments with the helpers in `src/validation.ts` before publishing; an invalid call throws `ValidationError` and publishes nothing. Handlers and `NotificationService` trust the events they receive and do not re-validate.
+
+Dependency direction: `events/` depends on nothing; `platform/` depends on `events/`; `notifications/` depends on `events/` and `platform/` lookups. Nothing in `events/` or `platform/` imports from `notifications/`. `src/validation.ts` depends on nothing and may be imported from anywhere.
 
 Adding an event type should mean: define the event, add the emitter method, add a `NotificationType`, add a handler, subscribe it. If a change needs edits elsewhere, flag it.
 
@@ -60,6 +62,7 @@ Use the brief's message wording exactly where it is given (level up, item acquir
 - `ChallengeCompleted` carries `challengeName` directly, so there is no challenge lookup.
 - The game engine only emits `ItemAcquired` for rare or valuable items; handlers do not filter by rarity.
 - Default preference for a user with no stored setting: set to enable, then record the decision here and in the README.
+- Validation rules: player ids and levels are positive safe integers (1 or more); item ids and challenge names are non-blank strings; two-player events need two different players. Runtime checks cover only what the types cannot express. A valid id does not have to belong to a known player or item.
 - "Real-time" means handled synchronously when the event is published. No queues, batching, retries, error isolation or persistence.
 
 ## Scope

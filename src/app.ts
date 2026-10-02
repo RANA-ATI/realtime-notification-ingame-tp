@@ -22,6 +22,7 @@ export interface App {
   readonly socialSystem: SocialSystem;
   readonly preferences: UserPreferenceService;
   readonly channel: InAppNotificationChannel;
+  readonly playerDirectory: PlayerDirectory;
 }
 
 // Composition root: the only place that builds concrete classes and
@@ -47,5 +48,6 @@ export function createApp(): App {
     socialSystem: new SocialSystem(eventBus),
     preferences,
     channel,
+    playerDirectory,
   };
 }
