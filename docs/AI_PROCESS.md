@@ -61,3 +61,27 @@ Tool: Claude Code (VS Code extension).
 - Accepted the draft's structure and content.
 - Changed: Claude reconciled it with the decisions from step 3. Component names now match the approved design (`UserPreferenceService`, `InAppNotificationChannel`). The catalog's "ours to define" rows were filled with the approved triggers and wording. The rule that bus errors propagate was added. The existing rule to wait for approval before major architectural changes was kept.
 - Left open: the default preference for a user with no stored setting.
+
+## 6. Event bus (2026-10-02)
+
+**Goal:** the `EventBus` and `EventHandler` interfaces and the in-memory implementation.
+
+**Prompt (summary):** set the default preference to enabled. Implement step 2 only, keep synchronous `void` behavior, let handler errors propagate from `publish()`, and stop for review.
+
+**Outcome:**
+- Decided: a user with no stored preference receives notifications (default enabled).
+- Created `src/events/event-bus.ts` and `src/events/in-memory-event-bus.ts`. The bus keeps a map from event type to handlers and calls them in subscription order. It has no try/catch, so a throwing handler stops the publish and the error reaches the caller.
+- Changed during verification: with the approved signature `subscribe<T>(type: T, handler: EventHandler<EventOf<T>>)`, a type-level check showed that subscribing an `ItemAcquired` handler under `'PlayerLeveledUp'` compiled. TypeScript inferred `T` from both arguments and widened it to a union of the two event types. Wrapping the handler's event type in `NoInfer<...>` makes `T` come from the `type` argument alone, and the mismatch is now a compile error.
+- Verified with throwaway scripts, since the test suite is a later step: routing by type, subscription order, publish with no subscribers, and error propagation. `npm run build` compiles cleanly.
+
+## 7. Step 2 review and committed-state check (2026-10-02)
+
+**Goal:** approve step 2 and confirm the repository builds from what is committed, as a reviewer's clone would.
+
+**Prompt (summary):** step 2 approved with the implementation otherwise unchanged. Verify the repository from its committed state with the build, record the `NoInfer` decision and why it was accepted, and stop before step 3.
+
+**Outcome:**
+- Accepted: `subscribe<T extends EventType>(type: T, handler: EventHandler<NoInfer<EventOf<T>>>)`. This is the one deviation from the signature approved in step 3. It was accepted because it stops TypeScript from widening `T` based on the handler argument. Without it, a handler for the wrong event compiles and would receive events of a type it was not written for. With it, the event type is fixed by the `type` argument and the mismatch is caught at compile time. It has no runtime cost and needs no extra code in handlers or callers.
+- Found: a fresh clone of the last commit could not build. `package.json` and `package-lock.json` had been listed in `.gitignore` when that commit was made, so neither was committed and `npm install` failed. The `.gitignore` has since been corrected in the working tree.
+- Verified: a copy of the working tree, limited to the files git would commit, installs with `npm ci` and builds cleanly.
+- Lesson kept for the rest of the project: check a fresh clone, since the local folder can build while the committed repository cannot.
