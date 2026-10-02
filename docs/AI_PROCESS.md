@@ -85,3 +85,19 @@ Tool: Claude Code (VS Code extension).
 - Found: a fresh clone of the last commit could not build. `package.json` and `package-lock.json` had been listed in `.gitignore` when that commit was made, so neither was committed and `npm install` failed. The `.gitignore` has since been corrected in the working tree.
 - Verified: a copy of the working tree, limited to the files git would commit, installs with `npm ci` and builds cleanly.
 - Lesson kept for the rest of the project: check a fresh clone, since the local folder can build while the committed repository cannot.
+
+## 8. Notification core (2026-10-02)
+
+**Goal:** the notification model, the channel, preferences and `NotificationService`, with no knowledge of domain events.
+
+**Prompt (summary):** implement step 3 only, creating five named files under `src/notifications/`. Requirements: a minimal `Notification`, the `GAME | SOCIAL` category type, `NotificationRequest`, a `void` channel interface, an in-app channel that records deliveries in memory for later tests, preferences that default to enabled, and a `notify()` that checks the preference, skips if disabled, builds the `Notification` and calls the channel. Constructor injection, synchronous, errors propagate, no extra abstractions. Build, sanity-check, record the step, and stop.
+
+**Outcome:**
+- Created `notification.ts`, `notification-channel.ts`, `in-app-notification-channel.ts`, `user-preference-service.ts` and `notification-service.ts`.
+- `NotificationService` takes a `UserPreferenceService` and a `NotificationChannel` through its constructor. `notify()` returns early when the category is disabled. Otherwise it builds a `Notification` with a random UUID and the current time and passes it to the channel. It has no try/catch.
+- `InMemoryUserPreferenceService` stores only what a player has explicitly set. Anything not stored reads as enabled.
+- `InAppNotificationChannel` records notifications in delivery order and exposes `delivered` and `deliveredTo(playerId)`. It does not print. How the demo shows deliveries is left to the demo step.
+- Kept from the approved design: `Notification` and `NotificationRequest` carry a `type` field (`NotificationType`) in addition to the fields this prompt listed as the minimum, because the approved `NotificationRequest` interface includes it and the brief asks the system to determine the notification type.
+- Not added: an injectable clock or id generator. Tests can assert on recipient, category, type and message without them.
+- The only import from `events/` is the `PlayerId` type alias. The notification core references no event type and no handler.
+- Verified with a throwaway script, since the test suite is a later step: delivery by default, a disabled category skipped while the other category and other players are unaffected, re-enabling, unique ids, the channel not called when disabled, and a channel error propagating out of `notify()`. `npm run build` compiles cleanly.
