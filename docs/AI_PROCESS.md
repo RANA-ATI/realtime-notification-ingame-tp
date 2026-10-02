@@ -137,3 +137,18 @@ Tool: Claude Code (VS Code extension).
   - A channel error propagates through the service and the handler and out of `bus.publish()`.
   - At compile time, each handler subscribes under its own event type and a handler subscribed under the wrong event is rejected.
   - `npm run build` compiles cleanly.
+
+## 11. Application wiring and demo (2026-10-02)
+
+**Goal:** wire the pieces together in one place and give reviewers a single command that shows the system responding to events.
+
+**Prompt (summary):** implement step 6 only, application wiring and demo, using the approved architecture and existing implementation without redesigning anything. Create `src/app.ts`. Verify the project runs from a clean state with `npm install`, `npm run build` and `npm start`. The prompt's requirements list arrived empty, so the remaining details were taken from `CLAUDE.md`.
+
+**Outcome:**
+- Created `src/app.ts`. `createApp()` builds the bus, preferences, channel, service and lookups, subscribes the seven handlers, and returns the two emitters plus the preferences and the channel. It is the only place that constructs concrete classes.
+- Changed from the design notes: the folder plan had a separate `handlers/register-handlers.ts`. The seven `subscribe` calls live in `app.ts` instead, because `CLAUDE.md` names `app.ts` as the only place that subscribes handlers and a second file would hold nothing else.
+- Created `src/demo.ts`, which `CLAUDE.md` names as the target of `npm start`. It runs the brief's four example triggers, then the other three events, then turns SOCIAL off and on again for one player. After each call it prints what the channel delivered because of that call, or "(no notification sent)".
+- The in-app channel still only records. The demo does the printing, by reading the channel's delivered list before and after each call. This works because dispatch is synchronous, and it left the channel unchanged.
+- Added the `start` script to `package.json`. It builds first and then runs the demo, so `npm install` followed directly by `npm start` also works.
+- No existing source file was modified.
+- Verified from a clean state: the files git would commit were copied to an empty folder with no `node_modules` or `dist`, and `npm install`, `npm run build` and `npm start` each exited successfully. The demo printed the brief's exact wording for level up, item acquired and friend request, delivered the friend request to player 1 and the acceptance to player 3, skipped the friend request sent while SOCIAL was off, and delivered nine notifications for ten triggers.
