@@ -117,3 +117,23 @@ Tool: Claude Code (VS Code extension).
 - Both lookups take their data as an optional constructor argument with the example data as the default, so later tests can supply their own without a second implementation.
 - Changed from the design notes: the fallback for an unknown player was going to be `Player 42`. Inside the brief's wording that would read "Player 'Player 42' has sent you a friend request", so the fallback is the bare id.
 - Verified with a throwaway script, since the test suite is a later step: all seven methods publish exactly one event with the expected type and payload, a subscriber on the real bus receives the event synchronously, a handler error reaches the caller of the platform method, and both lookups return known and unknown values as described. `npm run build` compiles cleanly, and nothing under `events/` or `platform/` imports from `notifications/`.
+
+## 10. Event handlers (2026-10-02)
+
+**Goal:** one handler per domain event, turning the event into a `NotificationRequest`.
+
+**Prompt (summary):** implement step 5 only: seven named handlers, each implementing `EventHandler` for exactly one event and receiving `NotificationService` and any lookup it needs through the constructor. A handler decides recipient, category, notification type and message, then calls `notify()`. No preference checks, channel delivery, id or timestamp generation, or `Notification` construction in handlers. Keep the catalog's recipient rules. Handle an unknown item deterministically without new architecture. Do not touch the bus, events, service, emitters or lookups unless compilation requires it. No registration, `app.ts`, demo or full tests. Build, sanity-check all seven handlers including disabled preferences and one error path, record the step, stop, and do not commit.
+
+**Outcome:**
+- Created seven files in `src/notifications/handlers/`, one class each. Every `handle()` is a single `notify()` call, preceded by one lookup where a name or item is needed.
+- Recipients follow the catalog: `FriendRequestSent` notifies `toPlayerId`, `FriendRequestAccepted` notifies `requesterId`, `PlayerFollowed` notifies `followedId`, `PlayerDefeated` notifies `victimId`, and the three remaining game events notify `playerId`.
+- Dependencies: three handlers take only `NotificationService`, three social handlers and `PlayerDefeatedHandler` also take `PlayerDirectory`, and `ItemAcquiredHandler` also takes `ItemCatalog`. These are type-only imports of the two lookup classes; no handler imports an emitter.
+- Unknown item: the message uses the raw item id with no rarity, for example "You've acquired MysteryOrb!". The notification is still sent. This is a two-branch expression in the handler, with no new type or class.
+- No shared base class or helper. The seven handlers have the same shape, but each is about ten lines and the repetition is the price of keeping every event's rules in one obvious place.
+- No existing file was modified. The step needed no change to the bus, events, service, emitters or lookups.
+- Verified with throwaway scripts, since the test suite is a later step:
+  - Each handler makes exactly one `notify()` call with the expected recipient, category, type and message, including the brief's exact wording for level up, item acquired and friend request, the unknown-item case and an unknown player.
+  - With the real service, a disabled category skips the notification for that recipient only. A friend-accepted event triggered by a player who disabled SOCIAL still reaches the other player, since the preference checked is the recipient's.
+  - A channel error propagates through the service and the handler and out of `bus.publish()`.
+  - At compile time, each handler subscribes under its own event type and a handler subscribed under the wrong event is rejected.
+  - `npm run build` compiles cleanly.
