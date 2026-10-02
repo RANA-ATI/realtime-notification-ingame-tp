@@ -101,3 +101,19 @@ Tool: Claude Code (VS Code extension).
 - Not added: an injectable clock or id generator. Tests can assert on recipient, category, type and message without them.
 - The only import from `events/` is the `PlayerId` type alias. The notification core references no event type and no handler.
 - Verified with a throwaway script, since the test suite is a later step: delivery by default, a disabled category skipped while the other category and other players are unaffected, re-enabling, unique ids, the channel not called when disabled, and a channel error propagating out of `notify()`. `npm run build` compiles cleanly.
+
+## 9. Platform side (2026-10-02)
+
+**Goal:** the simulated game and social systems that publish domain events, and the two display-data lookups the handlers will need.
+
+**Prompt (summary):** implement step 4 only, creating four named files under `src/platform/`. `GameEngine` publishes the four game events and `SocialSystem` the three social events, each by building the typed event and calling `bus.publish()`. Preserve the documented argument order. Neither class may import or call anything from `notifications/`. Synchronous and `void`. `PlayerDirectory` and `ItemCatalog` are small in-memory lookups focused on the challenge examples. No handlers, registration, `app.ts`, demo or tests yet. Build, sanity-check, record the step, and stop.
+
+**Outcome:**
+- Created `game-engine.ts`, `social-system.ts`, `player-directory.ts` and `item-catalog.ts`.
+- `GameEngine` and `SocialSystem` each take the `EventBus` through the constructor. Every method is one `publish()` call. Their only imports are the `EventBus` interface and the `PlayerId` type.
+- The method signatures match the brief's triggers. On the social side the first argument is always the player who acted and the second the player acted upon, which is the order the brief's two examples use.
+- `PlayerDirectory.getDisplayName(id)` returns a name for players 1 to 3 and falls back to the id as text.
+- `ItemCatalog.find(itemId)` returns the display name and rarity for `SwordOfAzeroth`, the one item in the brief, and `undefined` for anything else. The handler will decide how to word an unknown item.
+- Both lookups take their data as an optional constructor argument with the example data as the default, so later tests can supply their own without a second implementation.
+- Changed from the design notes: the fallback for an unknown player was going to be `Player 42`. Inside the brief's wording that would read "Player 'Player 42' has sent you a friend request", so the fallback is the bare id.
+- Verified with a throwaway script, since the test suite is a later step: all seven methods publish exactly one event with the expected type and payload, a subscriber on the real bus receives the event synchronously, a handler error reaches the caller of the platform method, and both lookups return known and unknown values as described. `npm run build` compiles cleanly, and nothing under `events/` or `platform/` imports from `notifications/`.
